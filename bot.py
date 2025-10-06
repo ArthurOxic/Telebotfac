@@ -4,44 +4,37 @@ import yt_dlp
 import telebot
 import tempfile
 import shutil
-from pathlib import Path
 
-# ==== Load environment variables ====
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID = os.environ.get("CHANNEL_ID")
-
-if not BOT_TOKEN:
-    raise SystemExit("🚨 BOT_TOKEN not set. Please set it in Railway environment variables.")
-
-# Convert CHANNEL_ID to integer if set
-if CHANNEL_ID:
-    try:
-        CHANNEL_ID = int(CHANNEL_ID)
-    except ValueError:
-        print("⚠️ CHANNEL_ID is not a valid number. Videos to channel may fail.")
-        CHANNEL_ID = None
+# ==== BOT CONFIG ====
+BOT_TOKEN = "8196935057:AAE6GH-lZmB4z2qB-CRQZ__SBEyLhUb8bHI"
+CHANNEL_ID = -1002994588817  # Your private channel UID
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 # ==== Facebook Download Function ====
 def download_with_yt_dlp(url, quality='best'):
-    tmpdir = tempfile.mkdtemp(prefix="yt_")
+    """
+    Download Facebook video using yt-dlp into a temporary directory.
+    Returns the full path to the video file and the temp folder path for cleanup.
+    """
+    tmpdir = tempfile.mkdtemp()  # Create temp folder
     output_template = os.path.join(tmpdir, '%(title)s.%(ext)s')
     ydl_opts = {
         'outtmpl': output_template,
         'format': quality,
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,
+        'no_warnings': False,
+        'extract_flat': False,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-            return filename, tmpdir
+            return filename, tmpdir  # return temp folder for cleanup
     except Exception as e:
-        print("❌ Download error:", e)
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        print("Error downloading:", e)
+        shutil.rmtree(tmpdir, ignore_errors=True)  # cleanup on error
         return None, None
 
 # ==== Bot Handlers ====
@@ -67,8 +60,6 @@ def handle_fac(msg):
 
         # Download the video
         filename, tmpdir = download_with_yt_dlp(url)
-
-        # Remove waiting message
         try:
             bot.delete_message(msg.chat.id, waiting_msg.message_id)
         except Exception:
@@ -82,14 +73,9 @@ def handle_fac(msg):
         with open(filename, "rb") as vid:
             bot.send_video(msg.chat.id, vid, caption="✅ Done!")
 
-        # Send video to private channel if CHANNEL_ID is set
-        if CHANNEL_ID:
-            try:
-                with open(filename, "rb") as vid:
-                    name = msg.from_user.username or msg.from_user.first_name or "user"
-                    bot.send_video(CHANNEL_ID, vid, caption=f"📺 From: @{name}")
-            except Exception as e:
-                print("⚠️ Failed to send to channel:", e)
+        # Send video to private channel
+        with open(filename, "rb") as vid:
+            bot.send_video(CHANNEL_ID, vid, caption=f"📺 From: @{msg.from_user.username or msg.from_user.first_name}")
 
         # Cleanup temp folder
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -97,6 +83,5 @@ def handle_fac(msg):
     except Exception as e:
         bot.reply_to(msg, f"⚠️ Error: {e}")
 
-if __name__ == "__main__":
-    print("🤖 Bot is running...")
-    bot.infinity_polling()
+print("🤖 Bot is running...")
+bot.infinity_polling()
